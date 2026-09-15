@@ -1,6 +1,5 @@
 """
-VitaHealth - Phase 4
-Single Image Skin Condition Prediction
+VitaHealth - 22 Class Skin Condition Prediction
 
 Usage:
     python src/predict.py "path/to/image.jpg"
@@ -17,8 +16,6 @@ import torch.nn as nn
 from PIL import Image
 from torchvision import models, transforms
 
-from dataset import CLASS_NAMES
-
 
 # =========================================================
 # CONFIGURATION
@@ -28,7 +25,7 @@ DEVICE = torch.device(
     "cuda" if torch.cuda.is_available() else "cpu"
 )
 
-MODEL_PATH = "models/skin_classifier_mobilenet.pth"
+MODEL_PATH = "models/skin_classifier_22_mobilenet.pth"
 
 IMAGE_SIZE = 224
 
@@ -70,7 +67,7 @@ transform = transforms.Compose([
 def load_model():
 
     print(
-        "\nLoading trained model..."
+        "\nLoading 22-class trained model..."
     )
 
     if not os.path.exists(MODEL_PATH):
@@ -78,6 +75,39 @@ def load_model():
         raise FileNotFoundError(
             f"Model not found: {MODEL_PATH}"
         )
+
+    # -----------------------------------------------------
+    # LOAD CHECKPOINT
+    # -----------------------------------------------------
+
+    checkpoint = torch.load(
+        MODEL_PATH,
+        map_location=DEVICE
+    )
+
+    # -----------------------------------------------------
+    # GET CLASS NAMES FROM CHECKPOINT
+    # -----------------------------------------------------
+
+    if (
+        not isinstance(checkpoint, dict)
+        or "model_state_dict" not in checkpoint
+        or "class_names" not in checkpoint
+    ):
+
+        raise RuntimeError(
+            "The 22-class model file is not in the expected format."
+        )
+
+    class_names = checkpoint["class_names"]
+
+    print(
+        f"Number of classes: {len(class_names)}"
+    )
+
+    # -----------------------------------------------------
+    # CREATE MODEL
+    # -----------------------------------------------------
 
     model = models.mobilenet_v3_small(
         weights=None
@@ -89,16 +119,15 @@ def load_model():
 
     model.classifier[-1] = nn.Linear(
         in_features,
-        len(CLASS_NAMES)
+        len(class_names)
     )
 
-    state_dict = torch.load(
-        MODEL_PATH,
-        map_location=DEVICE
-    )
+    # -----------------------------------------------------
+    # LOAD TRAINED WEIGHTS
+    # -----------------------------------------------------
 
     model.load_state_dict(
-        state_dict
+        checkpoint["model_state_dict"]
     )
 
     model = model.to(
@@ -111,7 +140,7 @@ def load_model():
         "Model loaded successfully."
     )
 
-    return model
+    return model, class_names
 
 
 # =========================================================
@@ -120,6 +149,7 @@ def load_model():
 
 def predict_image(
     model,
+    class_names,
     image_path
 ):
 
@@ -133,9 +163,17 @@ def predict_image(
         f"\nImage: {image_path}"
     )
 
+    # -----------------------------------------------------
+    # LOAD IMAGE
+    # -----------------------------------------------------
+
     image = Image.open(
         image_path
     ).convert("RGB")
+
+    # -----------------------------------------------------
+    # PREPROCESS
+    # -----------------------------------------------------
 
     image_tensor = transform(
         image
@@ -148,7 +186,6 @@ def predict_image(
     image_tensor = image_tensor.to(
         DEVICE
     )
-
 
     # -----------------------------------------------------
     # MODEL PREDICTION
@@ -170,15 +207,17 @@ def predict_image(
             dim=1
         )
 
+    predicted_index = (
+        predicted_index.item()
+    )
 
-    predicted_index = predicted_index.item()
+    confidence = (
+        confidence.item()
+    )
 
-    confidence = confidence.item()
-
-    predicted_class = CLASS_NAMES[
+    predicted_class = class_names[
         predicted_index
     ]
-
 
     # =====================================================
     # RESULT
@@ -197,7 +236,7 @@ def predict_image(
     )
 
     print(
-        f"\nPredicted condition:"
+        "\nPredicted condition:"
     )
 
     print(
@@ -205,13 +244,12 @@ def predict_image(
     )
 
     print(
-        f"\nConfidence:"
+        "\nConfidence:"
     )
 
     print(
         f"  {confidence * 100:.2f}%"
     )
-
 
     # =====================================================
     # ALL CLASS PROBABILITIES
@@ -222,7 +260,7 @@ def predict_image(
     )
 
     for i, class_name in enumerate(
-        CLASS_NAMES
+        class_names
     ):
 
         probability = (
@@ -234,7 +272,6 @@ def predict_image(
             f"  {class_name:<25} "
             f"{probability:.2f}%"
         )
-
 
     print(
         "\n" + "=" * 70
@@ -252,7 +289,7 @@ def main():
     )
 
     print(
-        "VitaHealth - Skin Condition Prediction"
+        "VitaHealth - 22 Class Skin Condition Prediction"
     )
 
     print(
@@ -263,9 +300,8 @@ def main():
         f"\nDevice: {DEVICE}"
     )
 
-
     # -----------------------------------------------------
-    # CHECK ARGUMENT
+    # CHECK IMAGE ARGUMENT
     # -----------------------------------------------------
 
     if len(sys.argv) < 2:
@@ -288,16 +324,13 @@ def main():
 
         return
 
-
     image_path = sys.argv[1]
-
 
     # -----------------------------------------------------
     # LOAD MODEL
     # -----------------------------------------------------
 
-    model = load_model()
-
+    model, class_names = load_model()
 
     # -----------------------------------------------------
     # PREDICT
@@ -305,6 +338,7 @@ def main():
 
     predict_image(
         model,
+        class_names,
         image_path
     )
 

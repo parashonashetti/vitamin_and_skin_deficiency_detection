@@ -13,7 +13,7 @@ dist/
 *.pth
 
 # Dataset
-data/
+VitaHealth/ml/data/
 
 # OS
 .DS_Store
